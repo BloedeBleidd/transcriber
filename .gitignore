@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# Generated transcripts
+*.transcript.txt
+transcripts/
+output/
+tmp/
+cache/
+
+# Media inputs
+*.mp3
+*.wav
+*.m4a
+*.aac
+*.flac
+*.ogg
+*.opus
+*.mp4
+*.mov
+*.mkv
+*.avi
+*.webm
+*.m4v
+
+# Optional local batch files
+inputs.local.txt
+
+# Tooling
+.agents/
+.codex/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
