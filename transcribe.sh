@@ -348,11 +348,9 @@ add_cookies_args() {
   fi
 
   local cookies_abs
-  local cookies_name
   cookies_abs="$(abs_existing_file "$COOKIES_PATH")"
-  cookies_name="$(basename "$cookies_abs")"
-  docker_args_ref+=(-v "${cookies_abs}:/cookie-file/${cookies_name}:ro")
-  container_args_ref+=(--cookies "/cookie-file/${cookies_name}")
+  docker_args_ref+=(-v "${cookies_abs}:/cookie-file/cookies.txt:ro")
+  container_args_ref+=(--cookies "/cookie-file/cookies.txt")
 }
 
 run_single() {
@@ -372,11 +370,9 @@ run_single() {
     container_args+=(--url "$input")
   else
     local input_abs
-    local input_name
     input_abs="$(abs_existing_file "$input")"
-    input_name="$(basename "$input_abs")"
-    docker_args+=(-v "${input_abs}:/input/${input_name}:ro")
-    container_args+=(--input-file "/input/${input_name}")
+    docker_args+=(-v "${input_abs}:/input/input-media:ro")
+    container_args+=(--input-file "/input/input-media")
   fi
 
   echo "Running transcription for: $input"

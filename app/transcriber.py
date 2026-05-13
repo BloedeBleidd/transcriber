@@ -195,7 +195,7 @@ def download_url_media(
     # Last-resort fallback: scan tmp_dir for any media file
     media_files = sorted(
         p.resolve()
-        for p in tmp_dir.rglob("*")
+        for p in tmp_dir.glob("*")
         if p.is_file() and p.suffix.lower() in _MEDIA_EXTENSIONS
     )
     if media_files:
@@ -330,7 +330,10 @@ def convert_local_media_to_tmp_audio(
     )
 
     if process.stdout is None:
-        process.kill()
+        try:
+            process.kill()
+        except Exception:
+            pass
         raise RuntimeError(
             "FFmpeg process failed to start properly (missing stdout pipe). "
             "Check that FFmpeg is available in the container and the input file is readable."
