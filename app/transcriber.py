@@ -32,7 +32,6 @@ _MEDIA_EXTENSIONS: frozenset[str] = frozenset(
     {".mp3", ".mp4", ".m4a", ".webm", ".ogg", ".wav", ".flac",
      ".opus", ".mkv", ".avi", ".mov", ".aac", ".wma", ".m4v"}
 )
-
 def get_unique_output_path(output_path: Path) -> Path:
     """Return a unique output path, appending a counter if the file already exists.
 
@@ -585,7 +584,6 @@ def process_local_file(
     # Avoid collisions in batch mode
     if not output_file:
         output_path = get_unique_output_path(output_path)
-
     # Check output directory is writable before any processing
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if not os.access(output_path.parent, os.W_OK):
