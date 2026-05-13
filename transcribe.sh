@@ -529,6 +529,7 @@ main() {
 
   validate_runtime_options
   resolve_runtime_defaults
+  validate_runtime_options
 
   case "$BUILD_MODE" in
     auto|rebuild|fresh) ;;

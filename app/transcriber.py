@@ -41,7 +41,7 @@ def safe_filename(value: str, max_len: int = 180) -> str:
     :param max_len: Maximum allowed output length.
     :returns: Sanitized, non-empty file name stem.
     """
-    value = re.sub(r'[\x00-\x1f\x7f]', "", value)  # strip control characters
+    value = re.sub(r'[\x00-\x1f\x7f-\x9f]', "", value)  # strip control characters
     value = re.sub(r'[\\/*?:"<>|]', "_", value)
     value = re.sub(r"\s+", " ", value).strip()
     return value[:max_len] or "transcript"
@@ -182,9 +182,11 @@ def download_url_media(
     # Prefer the path yt-dlp itself recorded in requested_downloads
     downloads = info.get("requested_downloads") or []
     if downloads:
-        candidate = Path(downloads[0].get("filepath", "")).resolve()
-        if candidate.is_file():
-            return candidate, stem
+        filepath = downloads[0].get("filepath", "")
+        if filepath:
+            candidate = Path(filepath).resolve()
+            if candidate.is_file():
+                return candidate, stem
 
     # Secondary fallback: the path yt-dlp would have used
     if ydl_expected_path.is_file():
