@@ -169,8 +169,8 @@ validate_runtime_options() {
     warn "--device cuda with --compute-type int8 works, but float16 or int8_float16 is usually faster."
   fi
 
-  [[ "$MODEL" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || die "--model contains invalid characters"
-  [[ "$IMAGE_PREFIX" =~ ^[a-zA-Z0-9][a-zA-Z0-9.:/_-]*$ ]] || die "--image-prefix is invalid"
+  [[ "$MODEL" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || die "--model contains invalid characters (allowed: letters, numbers, dots, dashes, underscores)"
+  [[ "$IMAGE_PREFIX" =~ ^[a-zA-Z0-9][a-zA-Z0-9.:/_-]*$ ]] || die "--image-prefix is invalid (allowed: letters, numbers, dots, colons, slashes, dashes, underscores)"
   [[ "$TMP_SIZE" =~ ^[0-9]+[bBkKmMgGtT]?$ ]] || die "--tmp-size is invalid (examples: 8g, 512m, 2048k)"
 
   if [[ -n "$LANGUAGE" && ! "$LANGUAGE" =~ ^[a-zA-Z]{2,8}(-[a-zA-Z0-9]{1,8})*$ ]]; then
@@ -351,8 +351,8 @@ add_cookies_args() {
   local cookies_name
   cookies_abs="$(abs_existing_file "$COOKIES_PATH")"
   cookies_name="$(basename "$cookies_abs")"
-  docker_args_ref+=(-v "${cookies_abs}:/cookies/${cookies_name}:ro")
-  container_args_ref+=(--cookies "/cookies/${cookies_name}")
+  docker_args_ref+=(-v "${cookies_abs}:/cookie-file/${cookies_name}:ro")
+  container_args_ref+=(--cookies "/cookie-file/${cookies_name}")
 }
 
 run_single() {

@@ -41,7 +41,7 @@ def safe_filename(value: str, max_len: int = 180) -> str:
     :param max_len: Maximum allowed output length.
     :returns: Sanitized, non-empty file name stem.
     """
-    value = re.sub(r'[\x00-\x1f\x7f]', "", value)   # strip control characters
+    value = re.sub(r'[\x00-\x1f\x7f]', "", value)  # strip control characters
     value = re.sub(r'[\\/*?:"<>|]', "_", value)
     value = re.sub(r"\s+", " ", value).strip()
     return value[:max_len] or "transcript"
@@ -324,7 +324,10 @@ def convert_local_media_to_tmp_audio(
 
     if process.stdout is None:
         process.kill()
-        raise RuntimeError("Internal error: FFmpeg subprocess has no stdout pipe.")
+        raise RuntimeError(
+            "FFmpeg process failed to start properly. "
+            "This is an internal error; please report this issue."
+        )
 
     try:
         for line in process.stdout:
@@ -481,9 +484,6 @@ def process_url(
     if not os.access(check_dir, os.W_OK):
         raise OSError(f"Output directory is not writable: {check_dir}")
 
-    if output_file and output_file.exists():
-        print(f"WARN: overwriting existing output file: {output_file}", file=sys.stderr, flush=True)
-
     print("Input type: URL", flush=True)
     print(f"Input: {url}", flush=True)
 
@@ -493,7 +493,7 @@ def process_url(
         media_path, stem = download_url_media(url=url, tmp_dir=tmp_dir, cookies=cookies)
         output_path = output_file or (output_dir / f"{stem}.txt")
 
-        if output_file is None and output_path.exists():
+        if output_path.exists():
             print(f"WARN: overwriting existing output file: {output_path}", file=sys.stderr, flush=True)
 
         print(f"Output: {output_path}", flush=True)
