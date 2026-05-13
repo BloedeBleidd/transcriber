@@ -148,10 +148,6 @@ abs_path() {
   fi
 }
 
-abs_output_path() {
-  abs_path "$1"
-}
-
 validate_runtime_options() {
   case "$DEVICE" in
     cpu|cuda) ;;
@@ -205,7 +201,7 @@ preflight_validate_input_and_options() {
 
   if [[ -n "$output" ]]; then
     local output_abs
-    output_abs="$(abs_output_path "$output")"
+    output_abs="$(abs_path "$output")"
     local output_dir
     output_dir="$(dirname "$output_abs")"
     mkdir -p "$output_dir" || die "Cannot create output directory: $output_dir"
@@ -415,7 +411,7 @@ run_single() {
         warn "Input file is not readable: $input"
         return 1
       fi
-      input_abs="$(get_realpath "$input")"
+      input_abs="$(abs_existing_file "$input")"
     else
       input_abs="$(abs_existing_file "$input")"
     fi
