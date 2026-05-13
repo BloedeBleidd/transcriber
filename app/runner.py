@@ -377,6 +377,8 @@ def _build_image(image: str, model: str, build_mode: str) -> None:
 
 def _docker_base_args(device: str, tmp_size: str) -> list[str]:
     """Build the ``docker run`` flags that precede the image name."""
+    # Docker tmpfs size expects lowercase units (g, m, k); normalise just in case.
+    tmp_size = tmp_size.lower()
     args: list[str] = [
         "run", "--rm",
         "--tmpfs", f"/tmp:rw,size={tmp_size},mode=1777",
