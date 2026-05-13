@@ -667,7 +667,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-timestamps",
         action="store_true",
-        help="Write plain text without timestamps.",
+        help="Write transcript text without segment timestamps.",
     )
     parser.add_argument(
         "--cookies",
@@ -694,8 +694,10 @@ def validate_args(args: argparse.Namespace) -> None:
             f"Allowed values: {', '.join(sorted(_VALID_COMPUTE_TYPES))}"
         )
 
-    if args.device == "cpu" and args.compute_type == "float16":
-        raise SystemExit("--compute-type float16 is not valid for CPU. Use int8 or float32.")
+    if args.device == "cpu" and args.compute_type in {"float16", "int8_float16"}:
+        raise SystemExit(
+            f"--compute-type {args.compute_type} is not valid for CPU. Use int8 or float32."
+        )
 
     if args.language and not _LANGUAGE_RE.match(args.language):
         raise SystemExit(

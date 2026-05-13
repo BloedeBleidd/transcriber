@@ -63,7 +63,7 @@ Options:
   --cookies <path>          path to yt-dlp cookies.txt
   --image-prefix <name>     Docker image prefix (default: transcriber)
   --build-mode <mode>       auto|rebuild|fresh (default: auto)
-  --no-timestamps           output plain text without timestamps
+  --no-timestamps           omit segment timestamps (metadata header is still written)
   -h, --help                show this help
 HELP
 }
@@ -149,6 +149,11 @@ abs_path() {
 }
 
 validate_runtime_options() {
+  case "$BUILD_MODE" in
+    auto|rebuild|fresh) ;;
+    *) die "--build-mode must be one of: auto, rebuild, fresh" ;;
+  esac
+
   case "$DEVICE" in
     cpu|cuda) ;;
     *) die "--device must be cpu or cuda" ;;
@@ -161,8 +166,8 @@ validate_runtime_options() {
       ;;
   esac
 
-  if [[ "$DEVICE" == "cpu" && "$COMPUTE_TYPE" == "float16" ]]; then
-    die "--compute-type float16 is not valid for CPU. Use int8 or float32."
+  if [[ "$DEVICE" == "cpu" && ( "$COMPUTE_TYPE" == "float16" || "$COMPUTE_TYPE" == "int8_float16" ) ]]; then
+    die "--compute-type $COMPUTE_TYPE is not valid for CPU. Use int8 or float32."
   fi
 
   if [[ "$DEVICE" == "cuda" && "$COMPUTE_TYPE" == "int8" ]]; then
@@ -281,6 +286,7 @@ add_common_docker_args() {
     run
     --rm
     --tmpfs "/tmp:rw,size=${TMP_SIZE},mode=1777"
+    --security-opt no-new-privileges
     -e "HOME=/tmp"
     -e "XDG_CACHE_HOME=/tmp/.cache"
     -e "HF_HOME=/tmp/.cache/huggingface"
@@ -417,8 +423,8 @@ run_single() {
     fi
     docker_args+=(-v "${input_abs}:/input/input-media:ro")
     container_args+=(--input-file "/input/input-media")
-    # For local files, add additional security restrictions
-    docker_args+=(--network none --security-opt no-new-privileges)
+    # For local files, disable network access entirely
+    docker_args+=(--network none)
   fi
 
   echo "Running transcription for: $input"
@@ -573,10 +579,6 @@ main() {
   resolve_runtime_defaults
   validate_runtime_options
   preflight_validate_input_and_options "$input" "$output"
-  case "$BUILD_MODE" in
-    auto|rebuild|fresh) ;;
-    *) die "--build-mode must be one of: auto, rebuild, fresh" ;;
-  esac
 
   print_effective_configuration "$input" "$output"
   check_docker

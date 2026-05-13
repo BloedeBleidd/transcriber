@@ -38,7 +38,7 @@ This project gives one stable entrypoint:
 ## Requirements
 
 - **Docker** (any recent version)
-- **Bash 4+** on the host
+- **Bash 4.3+** on the host
 
 Everything else (Python, ffmpeg, yt-dlp, faster-whisper, …) runs inside the Docker container.
 
@@ -107,7 +107,7 @@ Key options:
 
 - `--model <name>` (default: `medium`)
 - `--language <code>` (default: auto-detect)
-- `--no-timestamps`
+- `--no-timestamps` (omits segment timestamps; metadata header is still written)
 - `--cookies <path>`
 - `--device <cpu|cuda>` (default: `cpu`)
 - `--compute-type <type>`
@@ -228,7 +228,7 @@ yt-dlp is installed from the PyPI wheel, which upstream states contains only Unl
 **Container sandbox hardening:**
 - Container runs as current host UID/GID (when available).
 - For local file input mode: `--network none` disables all network access, and `--security-opt no-new-privileges` prevents privilege escalation.
-- For URL download mode: network is enabled for media acquisition but other security options apply.
+- For URL download mode: network is enabled for media acquisition and `no-new-privileges` is still applied.
 
 **Model and cache storage:**
 - Preloaded Whisper models are stored inside the Docker image layers (persisting on the host in Docker's internal storage).
