@@ -4,7 +4,7 @@ set -euo pipefail
 IFS=$'\n\t'
 
 if (( BASH_VERSINFO[0] < 4 )); then
-  echo "ERROR: Bash 4+ is required." >&2
+  echo "ERROR: Bash 4+ is required. On macOS install modern Bash (e.g. via Homebrew) and run with that shell." >&2
   exit 1
 fi
 

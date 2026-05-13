@@ -47,6 +47,11 @@ def safe_filename(value: str, max_len: int = 180) -> str:
     return value[:max_len] or "transcript"
 
 
+def warn_overwrite(path: Path) -> None:
+    """Print a standardized warning when an existing output file will be replaced."""
+    print(f"WARN: overwriting existing output file: {path}", file=sys.stderr, flush=True)
+
+
 def run_cmd(cmd: list[str], timeout_seconds: int = 1800) -> str:
     """Run a subprocess command and return stripped stdout.
 
@@ -325,8 +330,8 @@ def convert_local_media_to_tmp_audio(
     if process.stdout is None:
         process.kill()
         raise RuntimeError(
-            "FFmpeg process failed to start properly. "
-            "This is an internal error; please report this issue."
+            "FFmpeg process failed to start properly (missing stdout pipe). "
+            "Check that FFmpeg is available in the container and the input file is readable."
         )
 
     try:
@@ -494,7 +499,7 @@ def process_url(
         output_path = output_file or (output_dir / f"{stem}.txt")
 
         if output_path.exists():
-            print(f"WARN: overwriting existing output file: {output_path}", file=sys.stderr, flush=True)
+            warn_overwrite(output_path)
 
         print(f"Output: {output_path}", flush=True)
 
@@ -546,7 +551,7 @@ def process_local_file(
         raise OSError(f"Output directory is not writable: {output_path.parent}")
 
     if output_path.exists():
-        print(f"WARN: overwriting existing output file: {output_path}", file=sys.stderr, flush=True)
+        warn_overwrite(output_path)
 
     print("Input type: local media file", flush=True)
     print(f"Input: {input_file}", flush=True)
