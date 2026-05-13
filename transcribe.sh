@@ -423,7 +423,7 @@ run_single() {
     fi
     docker_args+=(-v "${input_abs}:/input/input-media:ro")
     container_args+=(--input-file "/input/input-media")
-    # For local files, disable network access entirely
+    # no-new-privileges is applied globally; local files also disable network access entirely
     docker_args+=(--network none)
   fi
 

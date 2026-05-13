@@ -38,7 +38,7 @@ This project gives one stable entrypoint:
 ## Requirements
 
 - **Docker** (any recent version)
-- **Bash 4.3+** on the host (the wrapper uses Bash nameref support via `local -n`)
+- **Bash 4.3+** on the host (required by `transcribe.sh` helper functions that use `local -n` namerefs)
 
 Everything else (Python, ffmpeg, yt-dlp, faster-whisper, …) runs inside the Docker container.
 
