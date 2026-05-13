@@ -63,7 +63,7 @@ Options:
   --cookies <path>          path to yt-dlp cookies.txt
   --image-prefix <name>     Docker image prefix (default: transcriber)
   --build-mode <mode>       auto|rebuild|fresh (default: auto)
-  --no-timestamps           omit segment timestamps (metadata header is still written)
+  --no-timestamps           disable segment timestamps (metadata header is still written)
   -h, --help                show this help
 HELP
 }

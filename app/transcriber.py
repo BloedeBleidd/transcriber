@@ -667,7 +667,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-timestamps",
         action="store_true",
-        help="Write transcript text without segment timestamps.",
+        help="Disable segment timestamps (metadata header is still written).",
     )
     parser.add_argument(
         "--cookies",
