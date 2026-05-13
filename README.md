@@ -21,19 +21,26 @@ This project gives one stable entrypoint:
 
 ## How it works
 
-1. `transcribe.sh` validates input/output/options.
-2. It prints the effective runtime configuration (all flags, including defaults).
-3. It builds (or reuses) a pinned Docker image.
-4. During image build, selected `faster-whisper` model variants are preloaded into the image cache. By default, only the `medium` model is preloaded.
-5. At runtime, model loading is restricted to local preloaded files (no model downloads).
-6. It runs a short-lived container with:
+1. `transcribe.sh` validates arguments, resolves defaults, prints effective configuration, and builds or reuses the Docker image.
+2. During image build, selected `faster-whisper` model variants are preloaded into the image cache. By default, only the `medium` model is preloaded.
+3. At runtime, model loading is restricted to local preloaded files (no model downloads).
+4. `transcribe.sh` runs a short-lived container (`app/transcriber.py`) with:
    - `yt-dlp` for URL media acquisition
    - `ffmpeg/ffprobe` for media probing/extraction
    - `faster-whisper` for transcription
-7. Progress bars are shown for downloading, audio extraction and transcription (with elapsed and ETA when total is known).
-8. Temporary media files are stored only in container `/tmp` mounted as tmpfs.
-9. Preloaded Whisper models are stored inside the Docker image layers (persisting on the host in Docker's internal storage).
-10. Only final `.txt` files are written to host output paths by the transcription process.
+5. Progress bars are shown for downloading, audio extraction and transcription (with elapsed and ETA when total is known).
+6. Temporary media files are stored only in container `/tmp` mounted as tmpfs.
+7. Preloaded Whisper models are stored inside the Docker image layers (persisting on the host in Docker's internal storage).
+8. Only final `.txt` files are written to host output paths by the transcription process.
+9. Input files and cookies are mounted as **file-level** bind mounts — only the specific file is visible inside the container, not its parent directory.
+10. In batch mode all items are attempted; per-item failures are collected and reported at the end instead of aborting the whole run.
+
+## Requirements
+
+- **Docker** (any recent version)
+- **Bash 4+** on the host
+
+Everything else (Python, ffmpeg, yt-dlp, faster-whisper, …) runs inside the Docker container.
 
 ## Quick start
 
