@@ -235,63 +235,6 @@ preflight_validate_input_and_options() {
   fi
 }
 
-preflight_validate_input_and_options() {
-  local input="$1"
-  local output="$2"
-
-  [[ -n "$input" ]] || die "Input must not be empty"
-
-  if [[ -n "$COOKIES_PATH" ]]; then
-    [[ -f "$COOKIES_PATH" ]] || die "Cookies file does not exist or is not readable: $COOKIES_PATH"
-    [[ -r "$COOKIES_PATH" ]] || die "Cookies file is not readable: $COOKIES_PATH"
-  fi
-
-  if ! is_url "$input"; then
-    if [[ -f "$input" ]] && is_list_file "$input"; then
-      local list_abs
-      local list_dir
-      local line
-      local item
-      local resolved_item
-
-      list_abs="$(abs_existing_file "$input")"
-      list_dir="$(dirname "$list_abs")"
-
-      while IFS= read -r line || [[ -n "$line" ]]; do
-        item="$(trim_line "$line")"
-
-        if [[ -z "$item" || "$item" == \#* ]]; then
-          continue
-        fi
-
-        if is_url "$item"; then
-          continue
-        fi
-
-        if [[ "$item" = /* ]]; then
-          resolved_item="$item"
-        else
-          resolved_item="${list_dir}/${item}"
-        fi
-
-        [[ -f "$resolved_item" ]] || die "Batch item file does not exist: $resolved_item"
-        [[ -r "$resolved_item" ]] || die "Batch item file is not readable: $resolved_item"
-      done < "$list_abs"
-    else
-      [[ -f "$input" ]] || die "Input file does not exist: $input"
-      [[ -r "$input" ]] || die "Input file is not readable: $input"
-    fi
-  fi
-
-  if [[ -n "$output" ]]; then
-    local output_abs
-    output_abs="$(abs_output_path "$output")"
-    local output_dir
-    output_dir="$(dirname "$output_abs")"
-    mkdir -p "$output_dir" || die "Cannot create output directory: $output_dir"
-  fi
-}
-
 resolve_runtime_defaults() {
   if [[ "$COMPUTE_TYPE" == "auto" ]]; then
     if [[ "$DEVICE" == "cuda" ]]; then
