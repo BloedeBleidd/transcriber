@@ -120,7 +120,7 @@ trim_line() {
 
 get_realpath() {
   if command -v realpath >/dev/null 2>&1; then
-    realpath "$1"
+    realpath -- "$1"
     return 0
   fi
 
@@ -170,7 +170,7 @@ validate_runtime_options() {
   fi
 
   [[ "$MODEL" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ ]] || die "--model contains invalid characters (allowed: letters, numbers, dots, dashes, underscores)"
-  [[ "$IMAGE_PREFIX" =~ ^[a-zA-Z0-9][a-zA-Z0-9.:/_-]*$ ]] || die "--image-prefix is invalid (allowed: letters, numbers, dots, colons, slashes, dashes, underscores)"
+  [[ "$IMAGE_PREFIX" =~ ^[a-z0-9][a-z0-9.:/_-]*$ ]] || die "--image-prefix is invalid (allowed: lowercase letters, numbers, dots, colons, slashes, dashes, underscores)"
   [[ "$TMP_SIZE" =~ ^[0-9]+[bBkKmMgGtT]?$ ]] || die "--tmp-size is invalid (examples: 8g, 512m, 2048k)"
 
   if [[ -n "$LANGUAGE" && ! "$LANGUAGE" =~ ^[a-zA-Z]{2,8}(-[a-zA-Z0-9]{1,8})*$ ]]; then
