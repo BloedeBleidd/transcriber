@@ -30,6 +30,14 @@ cache/
 *.avi
 *.webm
 *.m4v
+*.m4b
+*.aiff
+*.aif
+*.wma
+*.flv
+*.3gp
+*.ts
+*.m2ts
 
 *.txt
 !requirements.txt

@@ -35,6 +35,24 @@ cache/
 *.avi
 *.webm
 *.m4v
+*.m4b
+*.aiff
+*.aif
+*.wma
+*.flv
+*.3gp
+*.ts
+*.m2ts
+
+# Secrets / auth
+cookies.txt
+cookies*.txt
+*.cookies.txt
+*.netscape.txt
+.env
+.env.*
+*.pem
+*.key
 
 # Optional local batch files
 inputs.local.txt
