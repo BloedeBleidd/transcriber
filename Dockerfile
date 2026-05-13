@@ -20,7 +20,7 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY requirements.txt /app/requirements.txt
-RUN python -m pip install --upgrade pip \
+RUN python -m pip install --upgrade "pip==${PIP_VERSION}" \
  && python -m pip install --no-cache-dir -r /app/requirements.txt \
  && python - <<'PY'
 import importlib.metadata as m
@@ -48,14 +48,12 @@ RUN mkdir -p "${WHISPER_DOWNLOAD_ROOT}" \
  && PRELOAD_MODELS="${PRELOAD_MODELS}" python - <<'PY'
 import os
 from pathlib import Path
-from faster_whisper.utils import available_models, download_model
+from faster_whisper.utils import download_model
 
 raw = os.environ.get("PRELOAD_MODELS", "medium").strip()
 
-if raw.lower() == "all":
-    models = available_models()
-else:
-    models = [item.strip() for item in raw.split(",") if item.strip()]
+# Only accept explicit comma-separated model names
+models = [item.strip() for item in raw.split(",") if item.strip()]
 
 if not models:
     raise SystemExit("PRELOAD_MODELS resolved to an empty model list")

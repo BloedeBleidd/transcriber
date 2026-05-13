@@ -86,6 +86,15 @@ For batch mode, relative paths are resolved against the location of `inputs.txt`
 
 Note: Batch mode currently starts one short-lived container per input item. This keeps path handling simple, but repeated model loading makes large batches slower.
 
+## Output behavior
+
+- **Single input with exact output file:** Output `.txt` file is created or overwritten.
+- **Single input with output directory:** Output `.txt` file is auto-named in the directory based on input file stem.
+- **Batch input:** Output directory receives multiple `.txt` files. File names are auto-generated from input stems.
+  - **Collision handling:** If multiple batch items have the same output file name (e.g., `./a/meeting.mp4` and `./b/meeting.mp4` both produce `meeting.txt`), the first item creates `meeting.txt` and subsequent items produce `meeting-2.txt`, `meeting-3.txt`, etc.
+- **Existing files are overwritten:** If an output file already exists at the exact target path (not a collision), it is silently overwritten.
+- **Partial transcripts:** If transcription fails, the output file is not written; only a temporary `.tmp` file may be created (and is cleaned up).
+
 ## CLI reference
 
 Show help:
@@ -113,11 +122,16 @@ Key options:
 ./transcribe.sh ./conferencia_es.mp4 ./transcripts --language es --device cuda --compute-type float16
 ```
 
-Notes:
+**CPU mode (default):**
+- Works out-of-the-box with the default Docker image.
 
-- The default Dockerfile is CPU-oriented.
-- `--device cuda` requires Docker GPU support (`--gpus all`) and NVIDIA Container Toolkit on host.
-- GPU mode requires an image/runtime that provides CUDA 12 and cuDNN 9 libraries. If the default image fails with `--device cuda`, use `cpu` or provide a dedicated CUDA-enabled Docker image.
+**GPU mode (`--device cuda`):**
+- Requires Docker GPU support with NVIDIA Container Toolkit installed on the host.
+- Requires an NVIDIA GPU and compatible NVIDIA driver.
+- The default `python:3.12.12-slim-bookworm` base image does **not** include CUDA/cuDNN libraries. To use GPU:
+  - Either provide a CUDA-enabled base image and rebuild the Dockerfile.
+  - Or run the container with pre-installed CUDA/cuDNN runtime libraries mounted from the host.
+- CTranslate2 4.7.1 wheel (preloaded in the image) supports CUDA 12.x and requires cuDNN 8 for CUDA 12.x.
 - Models are preloaded into the Docker image at build time.
 - Runtime uses local preloaded model files only.
 
@@ -131,16 +145,21 @@ Notes:
 
 ## Version pinning
 
-The project pins runtime versions in:
+The project pins direct Python package dependencies to exact versions in:
 
 - [`Dockerfile`](./Dockerfile)
 - [`requirements.txt`](./requirements.txt)
 
-Pinned items include:
+Pinned Python package versions include `yt-dlp`, `faster-whisper` and its direct dependencies.
 
-- base image tag: `python:3.12.12-slim-bookworm`
-- Debian package: `ffmpeg` (stable from Debian bookworm)
-- Python dependencies including `yt-dlp`, `faster-whisper` and direct `faster-whisper` runtime deps
+**Limitations of current pinning:**
+
+- `pip` version is now pinned to the specified version.
+- Base image tag (`python:3.12.12-slim-bookworm`) is pinned to a specific tag, not a digest.
+- Debian system packages (`ffmpeg`, `ca-certificates`) are not version-pinned; they use the stable versions available from the `bookworm` repository at build time.
+- Transitive Python dependencies (dependencies of dependencies) are not hash-pinned via a `pip freeze` lockfile; direct dependency versions ensure some reproducibility but transitive pins would be stronger.
+
+For full cryptographic reproducibility, consider adding a `pip freeze` lockfile with `--require-hashes` in a future iteration.
 
 ## Licensing and compatibility (checked on May 11, 2026)
 
@@ -159,7 +178,7 @@ Rationale: GPL-3.0-or-later is chosen to keep redistribution of the complete Doc
 | project code (`transcribe.sh`, `app/transcriber.py`) | this repo | GPL-3.0-or-later |
 | Python runtime | Docker image (`python:3.12.12-slim-bookworm`) | PSF-2.0 (+ bundled software licenses) |
 | ffmpeg (Debian package) | Debian bookworm repository version used at build time | GPL/LGPL mix; Debian package notes GPL-family result |
-| yt-dlp (PyPI wheel/sdist) | `2026.3.17` | Unlicense |
+| yt-dlp (PyPI wheel) | `2026.3.17` | Unlicense |
 | faster-whisper | `1.2.1` | MIT |
 | ctranslate2 | `4.7.1` | MIT |
 | huggingface-hub | `1.14.0` | Apache-2.0 |
@@ -167,6 +186,22 @@ Rationale: GPL-3.0-or-later is chosen to keep redistribution of the complete Doc
 | onnxruntime | `1.25.1` | MIT |
 | av (PyAV) | `17.0.1` | BSD-3-Clause |
 | tqdm | `4.67.3` | MPL-2.0 + MIT parts |
+
+### Preloaded Whisper model licenses
+
+The Docker image preloads one or more Whisper model weights during build. These models are redistributed with the image. The following models are commonly used:
+
+| Model | Source | License | Approx. size |
+|---|---|---|---|
+| `Systran/faster-whisper-small` | Hugging Face | MIT | 490 MB |
+| `Systran/faster-whisper-medium` | Hugging Face | MIT | 1.53 GB |
+| `Systran/faster-whisper-large-v3` | Hugging Face | MIT | 2.96 GB |
+
+Each model is a CTranslate2 conversion of OpenAI's Whisper models. See the [Systran repository](https://huggingface.co/Systran) for full model information and license details.
+
+### yt-dlp licensing note
+
+yt-dlp is installed from the PyPI wheel, which upstream states contains only Unlicense code. This project does not redistribute yt-dlp PyInstaller executables, which have different licensing (GPLv3+).
 
 ### Primary sources
 
@@ -184,13 +219,25 @@ Rationale: GPL-3.0-or-later is chosen to keep redistribution of the complete Doc
 
 ## Security and operational notes
 
+**File access isolation:**
+- Input files are mounted read-only and individually (not directories).
+- Cookies file is mounted read-only and individually.
+- Output directory is the only writable host mount.
+- Temporary media files are stored only in container tmpfs (`/tmp`) and are deleted with the container.
+
+**Container sandbox hardening:**
 - Container runs as current host UID/GID (when available).
-- Input files are mounted read-only.
-- Cookies file is mounted read-only and only when requested.
-- Temporary media files are stored in container tmpfs (`/tmp`) and are deleted with the container.
-- Preloaded Whisper models are stored inside the Docker image layers.
+- For local file input mode: `--network none` disables all network access, and `--security-opt no-new-privileges` prevents privilege escalation.
+- For URL download mode: network is enabled for media acquisition but other security options apply.
+
+**Model and cache storage:**
+- Preloaded Whisper models are stored inside the Docker image layers (persisting on the host in Docker's internal storage).
 - The transcription runtime writes only requested output `.txt` files to host mounts.
-- Docker still maintains its own image/layer storage (including preloaded models) in its internal storage on the host.
+- Docker maintains its own image/layer storage (including preloaded models) in its internal storage on the host.
+
+**Output file safety:**
+- Failed transcriptions do not leave partial output files (transcripts are written to temporary `.tmp` files first, then atomically renamed).
+- Collision handling prevents batch mode from silently overwriting same-named items.
 
 ## Limitations
 

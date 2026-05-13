@@ -33,6 +33,26 @@ _MEDIA_EXTENSIONS: frozenset[str] = frozenset(
      ".opus", ".mkv", ".avi", ".mov", ".aac", ".wma", ".m4v"}
 )
 
+def get_unique_output_path(output_path: Path) -> Path:
+    """Return a unique output path, appending a counter if the file already exists.
+
+    :param output_path: Desired output path.
+    :returns: The original path if it doesn't exist, or a variant like ``file-2.txt``, ``file-3.txt``, etc.
+    """
+    if not output_path.exists():
+        return output_path
+
+    stem = output_path.stem
+    suffix = output_path.suffix
+    parent = output_path.parent
+
+    counter = 2
+    while True:
+        new_path = parent / f"{stem}-{counter}{suffix}"
+        if not new_path.exists():
+            return new_path
+        counter += 1
+
 
 def safe_filename(value: str, max_len: int = 180) -> str:
     """Return a filesystem-safe stem for output file names.
@@ -71,10 +91,7 @@ def run_cmd(cmd: list[str], timeout_seconds: int = 1800) -> str:
 
     if result.returncode != 0:
         raise RuntimeError(
-            "Command failed:\n"
-            + " ".join(cmd)
-            + "\n\nSTDERR:\n"
-            + result.stderr
+            "Command failed:\n" + " ".join(cmd) + "\n\nSTDERR:\n" + result.stderr
         )
 
     return result.stdout.strip()
@@ -136,7 +153,9 @@ def download_url_media(
     :returns: ``(downloaded_media_path, safe_filename_stem)``
     :raises RuntimeError: If download fails or no output file is found.
     """
-    progress = create_progress_bar("Downloading media", total=None, unit="B", unit_scale=True)
+    progress = create_progress_bar(
+        "Downloading media", total=None, unit="B", unit_scale=True
+    )
 
     def progress_hook(status: dict) -> None:
         state = status.get("status")
@@ -209,6 +228,7 @@ def get_media_duration_seconds(input_path: Path) -> float | None:
 
     :param input_path: Path to media file.
     :returns: Duration in seconds, or ``None`` when unavailable.
+    :raises RuntimeError: If ffprobe execution fails.
     """
     cmd = [
         "ffprobe",
@@ -288,7 +308,9 @@ def convert_local_media_to_tmp_audio(
     media_kind = probe_media_kind(input_path)
 
     if media_kind == "video_without_audio":
-        raise RuntimeError(f"Input file has video stream but no audio stream: {input_path}")
+        raise RuntimeError(
+            f"Input file has video stream but no audio stream: {input_path}"
+        )
     if media_kind == "unknown":
         raise RuntimeError(f"Input file has no detectable audio stream: {input_path}")
 
@@ -434,8 +456,11 @@ def transcribe_audio(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Write to temporary file first, then atomically move to final location
+    tmp_output_path = output_path.with_suffix(output_path.suffix + ".tmp")
+
     try:
-        with output_path.open("w", encoding="utf-8") as file:
+        with tmp_output_path.open("w", encoding="utf-8") as file:
             file.write(f"Source: {source_label}\n")
             file.write(f"Detected language: {info.language}\n")
             file.write(f"Language probability: {info.language_probability:.2f}\n")
@@ -458,8 +483,14 @@ def transcribe_audio(
                     progress.update(max(0.0, marker - progress.n))
                 elif marker > progress.n:
                     progress.update(marker - progress.n)
+
+        # Atomic rename after successful transcription
+        tmp_output_path.replace(output_path)
     finally:
         progress.close()
+        # Clean up temp file if it still exists (in case of error)
+        if tmp_output_path.exists():
+            tmp_output_path.unlink()
 
 
 def process_url(
@@ -502,6 +533,8 @@ def process_url(
 
         media_path, stem = download_url_media(url=url, tmp_dir=tmp_dir, cookies=cookies)
         output_path = output_file or (output_dir / f"{stem}.txt")
+        if not output_file:
+            output_path = get_unique_output_path(output_path)
 
         if output_path.exists():
             warn_overwrite(output_path)
@@ -549,6 +582,9 @@ def process_local_file(
         raise RuntimeError(f"Input path is not a file: {input_file}")
 
     output_path = output_file or (output_dir / f"{safe_filename(input_file.stem)}.txt")
+    # Avoid collisions in batch mode
+    if not output_file:
+        output_path = get_unique_output_path(output_path)
 
     # Check output directory is writable before any processing
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -565,7 +601,9 @@ def process_local_file(
     with tempfile.TemporaryDirectory(dir="/tmp") as tmp_name:
         tmp_dir = Path(tmp_name)
 
-        audio_path = convert_local_media_to_tmp_audio(input_path=input_file, tmp_dir=tmp_dir)
+        audio_path = convert_local_media_to_tmp_audio(
+            input_path=input_file, tmp_dir=tmp_dir
+        )
         transcribe_audio(
             model=model,
             audio_path=audio_path,
