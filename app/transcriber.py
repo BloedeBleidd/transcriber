@@ -662,7 +662,7 @@ def validate_args(args: argparse.Namespace) -> None:
     if args.language and not _LANGUAGE_RE.match(args.language):
         raise SystemExit(
             f"--language '{args.language}' does not look like a valid language code. "
-            "Use ISO 639-1 codes such as: en, pl, de, zh-CN."
+            "Use language codes such as: en, pl, de, zh-CN, pt-BR."
         )
 
 
