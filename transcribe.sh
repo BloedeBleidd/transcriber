@@ -191,35 +191,7 @@ preflight_validate_input_and_options() {
 
   if ! is_url "$input"; then
     if [[ -f "$input" ]] && is_list_file "$input"; then
-      local list_abs
-      local list_dir
-      local line
-      local item
-      local resolved_item
-
-      list_abs="$(abs_existing_file "$input")"
-      list_dir="$(dirname "$list_abs")"
-
-      while IFS= read -r line || [[ -n "$line" ]]; do
-        item="$(trim_line "$line")"
-
-        if [[ -z "$item" || "$item" == \#* ]]; then
-          continue
-        fi
-
-        if is_url "$item"; then
-          continue
-        fi
-
-        if [[ "$item" = /* ]]; then
-          resolved_item="$item"
-        else
-          resolved_item="${list_dir}/${item}"
-        fi
-
-        [[ -f "$resolved_item" ]] || die "Batch item file does not exist: $resolved_item"
-        [[ -r "$resolved_item" ]] || die "Batch item file is not readable: $resolved_item"
-      done < "$list_abs"
+      [[ -r "$input" ]] || die "Input file is not readable: $input"
     else
       [[ -f "$input" ]] || die "Input file does not exist: $input"
       [[ -r "$input" ]] || die "Input file is not readable: $input"
@@ -228,7 +200,7 @@ preflight_validate_input_and_options() {
 
   if [[ -n "$output" ]]; then
     local output_abs
-    output_abs="$(abs_output_path "$output")"
+    output_abs="$(abs_path "$output")"
     local output_dir
     output_dir="$(dirname "$output_abs")"
     mkdir -p "$output_dir" || die "Cannot create output directory: $output_dir"
@@ -414,6 +386,7 @@ run_single() {
   local input="$1"
   local output="$2"
   local force_output_dir="${3:-0}"
+  local tolerate_local_input_errors="${4:-0}"
   local docker_args=()
   local container_args=()
   local effective_image="${IMAGE_PREFIX}:${MODEL}"
@@ -428,7 +401,19 @@ run_single() {
     # For URL mode, network is needed for download
   else
     local input_abs
-    input_abs="$(abs_existing_file "$input")"
+    if [[ "$tolerate_local_input_errors" == "1" ]]; then
+      if [[ ! -f "$input" ]]; then
+        warn "Input file does not exist: $input"
+        return 1
+      fi
+      if [[ ! -r "$input" ]]; then
+        warn "Input file is not readable: $input"
+        return 1
+      fi
+      input_abs="$(get_realpath "$input")"
+    else
+      input_abs="$(abs_existing_file "$input")"
+    fi
     docker_args+=(-v "${input_abs}:/input/input-media:ro")
     container_args+=(--input-file "/input/input-media")
     # For local files, add additional security restrictions
@@ -479,7 +464,7 @@ run_batch_file() {
     index=$((index + 1))
     echo
     echo "[${index}/${#items[@]}] Processing: ${item}"
-    if ! run_single "$item" "$output" "1"; then
+    if ! run_single "$item" "$output" "1" "1"; then
       warn "Failed: ${item}"
       errors+=("$item")
     fi

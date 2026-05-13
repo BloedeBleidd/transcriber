@@ -521,7 +521,7 @@ def process_url(
     # Check output directory is writable before the potentially long download
     check_dir = output_file.parent if output_file else output_dir
     check_dir.mkdir(parents=True, exist_ok=True)
-    if not os.access(check_dir, os.W_OK):
+    if not os.access(check_dir, os.W_OK | os.X_OK):
         raise OSError(f"Output directory is not writable: {check_dir}")
 
     print("Input type: URL", flush=True)
@@ -586,7 +586,7 @@ def process_local_file(
         output_path = get_unique_output_path(output_path)
     # Check output directory is writable before any processing
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    if not os.access(output_path.parent, os.W_OK):
+    if not os.access(output_path.parent, os.W_OK | os.X_OK):
         raise OSError(f"Output directory is not writable: {output_path.parent}")
 
     if output_path.exists():
