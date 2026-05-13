@@ -13,12 +13,25 @@ import argparse
 import os
 import re
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 import yt_dlp
 from faster_whisper import WhisperModel
 from tqdm import tqdm
+
+
+_VALID_COMPUTE_TYPES: frozenset[str] = frozenset(
+    {"int8", "float32", "float16", "int8_float16"}
+)
+_LANGUAGE_RE = re.compile(r"^[a-zA-Z]{2,8}(-[a-zA-Z0-9]{1,8})*$")
+
+# Extensions considered to be media files when scanning a download directory
+_MEDIA_EXTENSIONS: frozenset[str] = frozenset(
+    {".mp3", ".mp4", ".m4a", ".webm", ".ogg", ".wav", ".flac",
+     ".opus", ".mkv", ".avi", ".mov", ".aac", ".wma", ".m4v"}
+)
 
 
 def safe_filename(value: str, max_len: int = 180) -> str:
@@ -28,6 +41,7 @@ def safe_filename(value: str, max_len: int = 180) -> str:
     :param max_len: Maximum allowed output length.
     :returns: Sanitized, non-empty file name stem.
     """
+    value = re.sub(r'[\x00-\x1f\x7f]', "", value)   # strip control characters
     value = re.sub(r'[\\/*?:"<>|]', "_", value)
     value = re.sub(r"\s+", " ", value).strip()
     return value[:max_len] or "transcript"
@@ -101,29 +115,20 @@ def yt_dlp_options_base(cookies: str | None) -> dict:
     return options
 
 
-def get_video_name(url: str, cookies: str | None) -> str:
-    """Resolve a stable output file stem for URL input.
+def download_url_media(
+    url: str,
+    tmp_dir: Path,
+    cookies: str | None,
+) -> tuple[Path, str]:
+    """Download URL media to *tmp_dir* and return the file path plus a safe output stem.
 
-    :param url: Media URL supported by yt-dlp.
-    :param cookies: Optional path to cookies file for yt-dlp.
-    :returns: Safe file name stem based on title and media ID.
-    :raises RuntimeError: If metadata extraction fails.
-    """
-    options = yt_dlp_options_base(cookies)
-    with yt_dlp.YoutubeDL(options) as ydl:
-        info = ydl.extract_info(url, download=False)
-
-    title = f"{info.get('title', 'media')} [{info.get('id', 'unknown')}]"
-    return safe_filename(title)
-
-
-def download_url_media_to_tmp(url: str, tmp_dir: Path, cookies: str | None) -> Path:
-    """Download URL media to temporary directory with progress feedback.
+    The output stem is derived from the media title and ID so callers can
+    construct a unique output file name without a second yt-dlp metadata call.
 
     :param url: Media URL supported by yt-dlp.
     :param tmp_dir: Temporary directory for downloaded media.
     :param cookies: Optional path to cookies file for yt-dlp.
-    :returns: Path to downloaded media file under ``tmp_dir``.
+    :returns: ``(downloaded_media_path, safe_filename_stem)``
     :raises RuntimeError: If download fails or no output file is found.
     """
     progress = create_progress_bar("Downloading media", total=None, unit="B", unit_scale=True)
@@ -133,7 +138,6 @@ def download_url_media_to_tmp(url: str, tmp_dir: Path, cookies: str | None) -> P
         if state == "downloading":
             total = status.get("total_bytes") or status.get("total_bytes_estimate")
             downloaded = status.get("downloaded_bytes") or 0
-
             if total and progress.total is None:
                 progress.total = float(total)
             if downloaded > progress.n:
@@ -159,18 +163,38 @@ def download_url_media_to_tmp(url: str, tmp_dir: Path, cookies: str | None) -> P
     try:
         with yt_dlp.YoutubeDL(options) as ydl:
             info = ydl.extract_info(url, download=True)
-            candidate = Path(ydl.prepare_filename(info)).resolve()
+            # Capture the yt-dlp-generated path before closing the context
+            ydl_expected_path = Path(ydl.prepare_filename(info)).resolve()
+    except yt_dlp.DownloadError as exc:
+        raise RuntimeError(f"Failed to download media from '{url}': {exc}") from exc
     finally:
         progress.close()
 
-    if candidate.exists():
-        return candidate
+    # Build a safe output stem from the single metadata call
+    title = f"{info.get('title', 'media')} [{info.get('id', 'unknown')}]"
+    stem = safe_filename(title)
 
-    files = sorted(p.resolve() for p in tmp_dir.rglob("*") if p.is_file())
-    if not files:
-        raise RuntimeError("Downloaded media file was not found in temporary directory.")
+    # Prefer the path yt-dlp itself recorded in requested_downloads
+    downloads = info.get("requested_downloads") or []
+    if downloads:
+        candidate = Path(downloads[0].get("filepath", "")).resolve()
+        if candidate.is_file():
+            return candidate, stem
 
-    return files[0]
+    # Secondary fallback: the path yt-dlp would have used
+    if ydl_expected_path.is_file():
+        return ydl_expected_path, stem
+
+    # Last-resort fallback: scan tmp_dir for any media file
+    media_files = sorted(
+        p.resolve()
+        for p in tmp_dir.rglob("*")
+        if p.is_file() and p.suffix.lower() in _MEDIA_EXTENSIONS
+    )
+    if media_files:
+        return media_files[0], stem
+
+    raise RuntimeError("Downloaded media file was not found in temporary directory.")
 
 
 def get_media_duration_seconds(input_path: Path) -> float | None:
@@ -241,11 +265,16 @@ def probe_media_kind(input_path: Path) -> str:
     return "unknown"
 
 
-def convert_local_media_to_tmp_audio(input_path: Path, tmp_dir: Path) -> Path:
+def convert_local_media_to_tmp_audio(
+    input_path: Path,
+    tmp_dir: Path,
+    timeout_seconds: int = 3600,
+) -> Path:
     """Convert local media file to mono 16 kHz WAV in ``tmp_dir``.
 
     :param input_path: Source media file path.
     :param tmp_dir: Temporary directory for converted WAV output.
+    :param timeout_seconds: Maximum time allowed for the conversion.
     :returns: Path to generated WAV file.
     :raises RuntimeError: If no usable audio stream exists or conversion fails.
     """
@@ -257,7 +286,10 @@ def convert_local_media_to_tmp_audio(input_path: Path, tmp_dir: Path) -> Path:
         raise RuntimeError(f"Input file has no detectable audio stream: {input_path}")
 
     output_path = tmp_dir / "audio.wav"
-    duration = get_media_duration_seconds(input_path)
+    try:
+        duration = get_media_duration_seconds(input_path)
+    except Exception:
+        duration = None
     progress = create_progress_bar("Extracting audio", total=duration, unit="s")
 
     cmd = [
@@ -290,8 +322,11 @@ def convert_local_media_to_tmp_audio(input_path: Path, tmp_dir: Path) -> Path:
         bufsize=1,
     )
 
+    if process.stdout is None:
+        process.kill()
+        raise RuntimeError("Internal error: FFmpeg subprocess has no stdout pipe.")
+
     try:
-        assert process.stdout is not None
         for line in process.stdout:
             line = line.strip()
             if not line:
@@ -308,7 +343,15 @@ def convert_local_media_to_tmp_audio(input_path: Path, tmp_dir: Path) -> Path:
             elif line == "progress=end":
                 break
 
-        stdout_remaining, stderr_remaining = process.communicate()
+        try:
+            stdout_remaining, stderr_remaining = process.communicate(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+            raise RuntimeError(
+                f"FFmpeg audio extraction timed out after {timeout_seconds}s. "
+                f"The input file may be too large or corrupted: {input_path}"
+            )
     finally:
         progress.close()
 
@@ -370,7 +413,10 @@ def transcribe_audio(
         beam_size=5,
         vad_filter=True,
     )
-    duration = get_media_duration_seconds(audio_path)
+    try:
+        duration = get_media_duration_seconds(audio_path)
+    except Exception:
+        duration = None
     progress = create_progress_bar("Transcribing", total=duration, unit="s")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -412,7 +458,11 @@ def process_url(
     timestamps: bool,
     cookies: str | None,
 ) -> None:
-    """Handle URL input end-to-end: resolve name, download, transcribe, save.
+    """Handle URL input end-to-end: download, transcribe, save.
+
+    The output file name is resolved from the media metadata returned by
+    yt-dlp during the single download call, so no separate metadata query
+    is made.
 
     :param model: Initialized faster-whisper model instance.
     :param url: URL supported by yt-dlp.
@@ -425,16 +475,29 @@ def process_url(
     :raises RuntimeError: If download/transcription pipeline fails.
     :raises OSError: If output cannot be written.
     """
-    output_path = output_file or (output_dir / f"{get_video_name(url, cookies)}.txt")
+    # Check output directory is writable before the potentially long download
+    check_dir = output_file.parent if output_file else output_dir
+    check_dir.mkdir(parents=True, exist_ok=True)
+    if not os.access(check_dir, os.W_OK):
+        raise OSError(f"Output directory is not writable: {check_dir}")
+
+    if output_file and output_file.exists():
+        print(f"WARN: overwriting existing output file: {output_file}", file=sys.stderr, flush=True)
 
     print("Input type: URL", flush=True)
     print(f"Input: {url}", flush=True)
-    print(f"Output: {output_path}", flush=True)
 
     with tempfile.TemporaryDirectory(dir="/tmp") as tmp_name:
         tmp_dir = Path(tmp_name)
 
-        media_path = download_url_media_to_tmp(url=url, tmp_dir=tmp_dir, cookies=cookies)
+        media_path, stem = download_url_media(url=url, tmp_dir=tmp_dir, cookies=cookies)
+        output_path = output_file or (output_dir / f"{stem}.txt")
+
+        if output_file is None and output_path.exists():
+            print(f"WARN: overwriting existing output file: {output_path}", file=sys.stderr, flush=True)
+
+        print(f"Output: {output_path}", flush=True)
+
         audio_path = convert_local_media_to_tmp_audio(input_path=media_path, tmp_dir=tmp_dir)
 
         transcribe_audio(
@@ -476,6 +539,14 @@ def process_local_file(
         raise RuntimeError(f"Input path is not a file: {input_file}")
 
     output_path = output_file or (output_dir / f"{safe_filename(input_file.stem)}.txt")
+
+    # Check output directory is writable before any processing
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    if not os.access(output_path.parent, os.W_OK):
+        raise OSError(f"Output directory is not writable: {output_path.parent}")
+
+    if output_path.exists():
+        print(f"WARN: overwriting existing output file: {output_path}", file=sys.stderr, flush=True)
 
     print("Input type: local media file", flush=True)
     print(f"Input: {input_file}", flush=True)
@@ -569,8 +640,20 @@ def validate_args(args: argparse.Namespace) -> None:
     if args.output_file and not str(args.output_file).lower().endswith(".txt"):
         raise SystemExit("--output-file must end with .txt")
 
+    if args.compute_type not in _VALID_COMPUTE_TYPES:
+        raise SystemExit(
+            f"--compute-type '{args.compute_type}' is not valid. "
+            f"Allowed values: {', '.join(sorted(_VALID_COMPUTE_TYPES))}"
+        )
+
     if args.device == "cpu" and args.compute_type == "float16":
-        raise SystemExit("--compute-type float16 is not valid for CPU")
+        raise SystemExit("--compute-type float16 is not valid for CPU. Use int8 or float32.")
+
+    if args.language and not _LANGUAGE_RE.match(args.language):
+        raise SystemExit(
+            f"--language '{args.language}' does not look like a valid language code. "
+            "Use ISO 639-1 codes such as: en, pl, de, zh-CN."
+        )
 
 
 def env_bool(name: str, default: bool) -> bool:
@@ -592,9 +675,8 @@ def main() -> None:
     """Program entrypoint for a single URL or local input transcription run.
 
     :returns: ``None``.
-    :raises SystemExit: If CLI arguments are invalid.
-    :raises RuntimeError: If media processing or transcription fails.
-    :raises OSError: If filesystem writes fail.
+    :raises SystemExit: On any error — always prints a clean message instead of
+        a raw traceback so the user knows what went wrong.
     """
     args = parse_args()
     validate_args(args)
@@ -626,26 +708,32 @@ def main() -> None:
             ) from exc
         raise
 
-    if args.url:
-        process_url(
-            model=model,
-            url=args.url,
-            output_dir=output_dir,
-            output_file=output_file,
-            language=language,
-            timestamps=not args.no_timestamps,
-            cookies=args.cookies,
-        )
-        return
-
-    process_local_file(
-        model=model,
-        input_file=Path(args.input_file),
-        output_dir=output_dir,
-        output_file=output_file,
-        language=language,
-        timestamps=not args.no_timestamps,
-    )
+    try:
+        if args.url:
+            process_url(
+                model=model,
+                url=args.url,
+                output_dir=output_dir,
+                output_file=output_file,
+                language=language,
+                timestamps=not args.no_timestamps,
+                cookies=args.cookies,
+            )
+        else:
+            process_local_file(
+                model=model,
+                input_file=Path(args.input_file),
+                output_dir=output_dir,
+                output_file=output_file,
+                language=language,
+                timestamps=not args.no_timestamps,
+            )
+    except SystemExit:
+        raise
+    except KeyboardInterrupt:
+        raise SystemExit("\nInterrupted.")
+    except Exception as exc:
+        raise SystemExit(f"ERROR: {exc}") from exc
 
 
 if __name__ == "__main__":
