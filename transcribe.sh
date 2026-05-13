@@ -148,6 +148,10 @@ abs_path() {
   fi
 }
 
+abs_output_path() {
+  abs_path "$1"
+}
+
 validate_runtime_options() {
   case "$DEVICE" in
     cpu|cuda) ;;
@@ -190,7 +194,8 @@ preflight_validate_input_and_options() {
   fi
 
   if ! is_url "$input"; then
-    if [[ -f "$input" ]] && is_list_file "$input"; then
+    if is_list_file "$input"; then
+      [[ -f "$input" ]] || die "Input file does not exist: $input"
       [[ -r "$input" ]] || die "Input file is not readable: $input"
     else
       [[ -f "$input" ]] || die "Input file does not exist: $input"
@@ -200,7 +205,7 @@ preflight_validate_input_and_options() {
 
   if [[ -n "$output" ]]; then
     local output_abs
-    output_abs="$(abs_path "$output")"
+    output_abs="$(abs_output_path "$output")"
     local output_dir
     output_dir="$(dirname "$output_abs")"
     mkdir -p "$output_dir" || die "Cannot create output directory: $output_dir"

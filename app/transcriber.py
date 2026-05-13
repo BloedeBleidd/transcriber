@@ -522,7 +522,7 @@ def process_url(
     check_dir = output_file.parent if output_file else output_dir
     check_dir.mkdir(parents=True, exist_ok=True)
     if not os.access(check_dir, os.W_OK | os.X_OK):
-        raise OSError(f"Output directory is not writable: {check_dir}")
+        raise OSError(f"Output directory is not writable or accessible: {check_dir}")
 
     print("Input type: URL", flush=True)
     print(f"Input: {url}", flush=True)
@@ -587,7 +587,9 @@ def process_local_file(
     # Check output directory is writable before any processing
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if not os.access(output_path.parent, os.W_OK | os.X_OK):
-        raise OSError(f"Output directory is not writable: {output_path.parent}")
+        raise OSError(
+            f"Output directory is not writable or accessible: {output_path.parent}"
+        )
 
     if output_path.exists():
         warn_overwrite(output_path)
