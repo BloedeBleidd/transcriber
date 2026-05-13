@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 
-REPO_ROOT = Path("/home/runner/work/transcriber/transcriber")
+REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "transcribe.sh"
 
 

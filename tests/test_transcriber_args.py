@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 
-MODULE_PATH = Path("/home/runner/work/transcriber/transcriber/app/transcriber.py")
+MODULE_PATH = Path(__file__).resolve().parents[1] / "app" / "transcriber.py"
 
 
 def load_transcriber_module():
