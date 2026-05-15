@@ -575,7 +575,6 @@ main() {
   output="${positional[1]:-}"
   [[ -n "$input" ]] || die "Input must not be empty"
 
-  validate_runtime_options
   resolve_runtime_defaults
   validate_runtime_options
   preflight_validate_input_and_options "$input" "$output"
